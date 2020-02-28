@@ -128,17 +128,37 @@ object Main extends App {
   println(config)
   */
 
-  val sample_config =
+  val vvadd_config =
     """
       config {
-        arrange t(rows, cols) as {
-          group oneDimGroup: [i in rows*cols] -> [i/cols .. i%cols]
-        }
-      }
+      |  arrange t(rows, cols) as {
+      |    group oneDimGroup: [i in rows*cols] -> [i/cols .. i%cols]
+      |  }
+      |}
     """.stripMargin
 
+  val vvadd_data =
+    """
+      data {
+       equipartition1D A[n] across G[i] =
+         i * A.size[0] / G.size[0] .. (i+1) * A.size[0] / G.size[0]
+      }
+    """
+  val vvadd_code =
+    """
+     code {
+       vvadd (A: int[n], B: int[n]) -> C: int[n]
+        | equipartition1D A, B across oneDimGroup[i] =
+            A|i, dram|, B|i, dram| ~> A|i, sp|, B|i, sp|:
+              let A_sp, B_sp, C_dram = A|i, sp|, B|i, sp|, C|i, dram| in
+                for(int i = 0; i < n; i++) {
+                  C_dram = A_sp + B_sp
+                }
+     }
+    """
+
   println("parsing snippet:")
-  println(sample_config)
+  println(vvadd_config)
   val out = HBIRParser.parse(sample_config)
   println("output:")
   println(out)
