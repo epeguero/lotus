@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # copy kernel to gorgonzola
-scp -r vvadd_target.c emp238@gorgonzola.cs.cornell.edu:~/gem5-mesh/lotus/vvadd/vvadd.c
+scp -r example/* emp238@gorgonzola.cs.cornell.edu:~/gem5-mesh/lotus/
 
 ssh emp238@gorgonzola.cs.cornell.edu \
   'cd ~/gem5-mesh &&\

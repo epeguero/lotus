@@ -2,18 +2,21 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
-#include "../headers/pthread_launch.h"
-#include "../headers/spad.h"
-#include "../headers/bind_defs.h"
-#include "vvadd.h"
-
-#define MIN(a,b) (((a)<(b))?(a):(b))
-#define MAX(a,b) (((a)>(b))?(a):(b))
+#include "gem5/header/pthread_launch.h"
+#include "gem5/header/spad.h"
+#include "gem5/header/bind_defs.h"
+#include "lotus_runtime/header/lotus_runtime.h"
 
 // TODO generate from target section
-int SP_SIZE = 1000;
-int PHYS_ROWS = 2;
-int PHYS_COLS = 2;
+static int SP_SIZE;
+static int PHYS_ROWS;
+static int PHYS_COLS;
+
+int initialize_target_section(int sp_size, int phys_rows, int phys_cols) {
+  SP_SIZE = sp_size;
+  PHYS_ROWS = phys_rows;
+  PHYS_COLS = phys_cols;
+}
 
 int target_section_is_compatible() {
   int num_core_rows, num_core_cols;
@@ -28,208 +31,25 @@ int target_section_is_compatible() {
   return 1;
 }
 
+int dram_1Dstream(int* t_sp, int chunk_size, PartitionedTensor* pt, int gid, int load_ix) {
 
+  int stream_offset = load_ix * chunk_size;
+  Range* slice = pt->partitions[gid]->slices[0];
 
-typedef struct Coord {
-  int* coord;
-  int size;
-} Coord;
-
-Coord* build_1Dcoord(int coord) {
-  int* coord_arr = (int*) malloc(sizeof(int));
-  coord_arr[0] = coord;
-
-  Coord* c = (Coord*) malloc(sizeof(Coord));
-  *c = (Coord) {
-    .coord = coord_arr,
-    .size = 1
-  };
-  return c;
-}
-
-typedef struct Range {
-  // half-open interval: [start, end)
-  int start, end;
-  int size;
-} Range;
-
-Range* build_range(int start, int end) {
-  Range* r = malloc(sizeof(Range));
-  *r = (Range) {
-    .start = start,
-    .end = end,
-    .size = end-start
-  };
-  return r;
-}
-
-
-
-
-typedef struct Tensor {
-  char* name;
-  int* data;
-  int* size;
-  int dims;
-} Tensor;
-
-Tensor* build_tensor(char* name, int* data, int* size, int dims) {
-  Tensor* t = malloc(sizeof(Tensor));
-  *t = (Tensor) {
-    .name = name,
-    .data = data,
-    .size = size,
-    .dims = dims
-  };
-  return t;
-}
-
-Tensor* build_1Dtensor(char* name, int n) {
-  int* a = (int*)malloc(n * sizeof(int));
-  int* a_size = (int*) malloc(sizeof(int));
-  a_size[0] = n;
-  Tensor* A = build_tensor(name, a, a_size, 1);
-  return A;
-}
-
-void const_init(Tensor* a, int val) {
-  for(int dim = 0; dim < a->dims; dim++) {
-    for(int i = 0; i < a->size[dim]; i++) {
-      a->data[i] = val;
-    }
+  for(int i = 0; i < chunk_size; i++) {
+    t_sp[i] = pt->t->data[slice->start + stream_offset + i];
   }
 }
 
-void print_1Dtensor(Tensor* a) {
-  printf("Contents of %s:\n", a->name);
-  printf("[");
-  int n = a->size[0];
-  for(int i = 0; i < n-1; i++) {
-    if(i > 0 && i % 10 == 0) { printf("\n"); }
-    printf("%d, ", a->data[i]);
+void dram_vvadd_store(int gid, PartitionedTensor* out, int* a_sp, int* b_sp) {
+  Range* slice = out->partitions[gid]->slices[0];
+  int n = slice->end - slice->start;
+  for(int i = 0; i < n; i++) {
+    STORE_NOACK(a_sp[i] + b_sp[i], out->t->data + slice->start + i, 0);
   }
-  printf("%d]\n", a->data[n-1]);
 }
 
 
-
-
-
-
-typedef struct Partition {
-  Range** slices;
-  int dims;
-  int size;
-} Partition;
-
-Partition* build_partition(Range** slices, int dims) {
-  int size = 1;
-  for(int i = 0; i < dims; i++) {
-    size *= slices[i]->end - slices[i]->start;
-  }
-
-  Partition* p = (Partition*) malloc(sizeof(Partition));
-  *p = (Partition) {
-    .slices = slices,
-    .dims = dims,
-    .size = size
-  };
-
-  /* printf("\tbuilt size %d partition (%d,%d)\n",  */
-  /*     p->size, p->slices[0]->start, p->slices[0]->end); */
-
-  return p;
-}
-
-
-
-
-
-typedef struct Tile {
-  Coord* gid;
-  int phys_tid_row, phys_tid_col;
-
-  // 1D tile id according to HB architecture:
-  // row-major id assignment
-  // TODO: confirm this, look at the HB docs
-  int phys_tid; 
-} Tile;
-
-Tile* build_tile(Coord* gid, int phys_tid_row, int phys_tid_col, int phys_tid) {
-  Tile* t = malloc(sizeof(Tile));
-  *t = (Tile) {
-    .gid = gid,
-    .phys_tid_row = phys_tid_row, 
-    .phys_tid_col = phys_tid_col,
-    .phys_tid = phys_tid 
-  };
-  printf("\tbuilt tile with gid %d at (%d, %d)\n", t->gid->coord[0], t->phys_tid_row, t->phys_tid_col);
-  return t;
-}
-
-
-
-typedef Range* (*range_builder1D)(int);
-
-typedef struct Group {
-  char* name;
-  Tile** tiles;
-  int* size;
-  int dims;
-  int num_rows_par;
-  int num_cols_par;
-} Group;
-
-Group* build_1Dgroup(
-    char* name, 
-    int max_gid,
-    range_builder1D par_rows_gen, 
-    range_builder1D par_cols_gen) {
-
-  printf("building 1D group %s:\n", name);
-
-  // generate tiles corresponding to each group index
-  Tile** tiles = malloc(sizeof(Tile*) * max_gid);
-  for(int gid = 0; gid < max_gid; gid++) {
-    Coord* gid_coord = build_1Dcoord(gid);
-
-    // evaluate physical indices for group index
-    Range par_rows = *(*par_rows_gen)(gid);
-    Range par_cols = *(*par_cols_gen)(gid);
-    for(int phys_row = par_rows.start; phys_row < par_rows.end; phys_row++) {
-      for(int phys_col = par_cols.start; phys_col < par_cols.end; phys_col++) {
-
-        // build metadata for each member tile
-        int phys_tid = phys_col + phys_row * PHYS_COLS;
-        tiles[gid] = build_tile(gid_coord, phys_row, phys_col, phys_tid);
-      }
-    }
-  }
-
-  int* size = malloc(sizeof(int));
-  size[0] = max_gid;
-
-  Group* group = malloc(sizeof(Group));
-  *group= (Group) {
-    .name = name,
-    .tiles = tiles,
-    .size = size,
-    .num_rows_par = PHYS_ROWS,
-    .num_cols_par = PHYS_COLS
-  };
-
-  return group;
-}
-
-
-
-
-
-
-typedef struct PartitionedTensor {
-  Tensor* t;
-  Partition** partitions;
-} PartitionedTensor;
 
 // partition strategies
 // TODO: generate from data section
@@ -267,35 +87,6 @@ PartitionedTensor* partition(Tensor* a, char* part_strat_name, Group* g) {
   }
 
   return pt;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-int dram_1Dstream(int* t_sp, int chunk_size, PartitionedTensor* pt, int gid, int load_ix) {
-
-  int stream_offset = load_ix * chunk_size;
-  Range* slice = pt->partitions[gid]->slices[0];
-
-  for(int i = 0; i < chunk_size; i++) {
-    t_sp[i] = pt->t->data[slice->start + stream_offset + i];
-  }
-}
-
-void dram_vvadd_store(int gid, PartitionedTensor* out, int* a_sp, int* b_sp) {
-  Range* slice = out->partitions[gid]->slices[0];
-  int n = slice->end - slice->start;
-  for(int i = 0; i < n; i++) {
-    STORE_NOACK(a_sp[i] + b_sp[i], out->t->data + slice->start + i, 0);
-  }
 }
 
 
@@ -418,7 +209,7 @@ int oneDimGroup_size = 4;
 Group* oneDimGroup;
 
 void initialize_groups() {
-  oneDimGroup = build_1Dgroup("oneDimGroup", oneDimGroup_size, &oneDimGroup_par_rows_gen, &oneDimGroup_par_cols_gen);
+  oneDimGroup = build_1Dgroup("oneDimGroup", oneDimGroup_size, &oneDimGroup_par_rows_gen, &oneDimGroup_par_cols_gen, PHYS_ROWS, PHYS_COLS);
 }
 
 
@@ -465,6 +256,8 @@ void code_section() {
 }
 
 void main() {
+  initialize_target_section(1000, 2, 2);
+
   if(!target_section_is_compatible()) {
     printf("Aborting kernel.");
     return;
