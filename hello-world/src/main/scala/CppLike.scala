@@ -4,7 +4,7 @@ import Syntax._
 import PrettyPrint.Doc._
 import PrettyPrint.Doc
 
-object Gem5Backend {
+object CLike {
 
     /**
       * This class aggressively uses Scala's implicitConversions. Make sure
@@ -16,21 +16,24 @@ object Gem5Backend {
 
     val defaultIndent = 2
 
-
     /**
       * Helper to generate a variable declaration with an initial value.
       */
-    // def cBind(id: String, rhs: Doc): Doc = {
-    //   text("auto") <+> text(id) <+> text("=") <+> rhs <> semi
-    // }
+    def cBind(id: String, rhs: Doc): Doc = {
+      text(id) <+> text("=") <+> rhs <> semi
+    }
 
-    // /**
-    //   * Helper to generate a function call that might have a type parameter
-    //   */
-    // def cCall(f: String, tParam: Option[Doc], args: List[Doc]): Doc = {
-    //   text(f) <> (if (tParam.isDefined) angles(tParam.get) else emptyDoc) <>
-    //     parens(commaSep(args))
-    // }
+    def cDeclInit(typ: String, id: String, rhs: Doc): Doc = {
+      text(typ) <+> text(id) <+> text("=") <+> rhs <> semi
+    }
+
+    /**
+      * Helper to generate a function call that might have a type parameter
+      */
+    def cCall(f: String, args: List[Doc]): Doc = {
+      text(f) <> parens(commaSep(args))
+    }
+
 
     /**
       * Function used for converting types from Fuse to C++.
@@ -173,4 +176,21 @@ object Gem5Backend {
       text("#include") <+> quote(text(incl.name))
 
   */
+}
+
+object Gem5Backend {
+  import CLike._
+  
+  def decl1dTensor(id: String, n: Int): Doc =
+    cDeclInit("Tensor*", id, cCall("build_1Dtensor", List(quote(text(id)), value(n))))
+
+  def initConst(tensor_name: String, num: Int): Doc =
+    cCall("const_init", List(text(tensor_name), value(num))) <> semi
+
+  def print1dTensor(tensor_name: String): Doc =
+    cCall("print_1Dtensor", List(text(tensor_name))) <> semi
+
+  def runKernel(kernel_name: String, args: List[Doc]): Doc =
+    cCall("host_" + kernel_name, args) <> semi
+
 }
