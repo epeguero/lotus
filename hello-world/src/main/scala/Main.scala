@@ -68,7 +68,7 @@ private class HBIRParser extends RegexParsers with PackratParsers {
   def angular[T](parser: P[T]): P[T] = "<" ~> parser <~ ">"
   def commaSep[T](parser: P[T]): P[List[T]] = repsep(parser, "," )
 
-  lazy val funCall: P[Id ~ List[Id]] = iden ~ parens(commaSep(iden))
+  lazy val funCall: P[Id ~ List[Expr]] = iden ~ parens(commaSep(expr))
 
   lazy val iden: P[Id] = positioned {
     "" ~> "[a-zA-Z_][a-zA-Z0-9_]*".r ^^ { v => Id(v) }
@@ -112,15 +112,12 @@ object Main extends App {
   val code_lines = Source.fromFile("../example/code_section.hbir").getLines
   val code = code_lines.mkString
 
-  HBIRParser.debug
   println("parsing snippet:")
   for (line <- code_lines) { println(line) }
   val out = HBIRParser.parseCodeSection(code)
   println("output:")
   println(out)
-
-  
   println("testing emission:")
-  import Gem5Backend._
+  println(Gem5Backend.main(out).pretty)
 
 }

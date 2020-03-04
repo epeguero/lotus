@@ -16,22 +16,28 @@ object CLike {
 
     val defaultIndent = 2
 
+    val cInt = text("int") 
+
     /**
       * Helper to generate a variable declaration with an initial value.
       */
-    def cBind(id: String, rhs: Doc): Doc = {
-      text(id) <+> text("=") <+> rhs <> semi
+    def cBind(id: Doc, rhs: Doc): Doc = {
+      id <+> text("=") <+> rhs <> semi
     }
 
-    def cDeclInit(typ: String, id: String, rhs: Doc): Doc = {
-      text(typ) <+> text(id) <+> text("=") <+> rhs <> semi
-    }
+    def cDeclInit(typ: Doc, id: Doc, rhs: Doc): Doc = 
+      typ <+> id <+> text("=") <+> rhs <> semi
+    
 
     /**
       * Helper to generate a function call that might have a type parameter
       */
     def cCall(f: String, args: List[Doc]): Doc = {
       text(f) <> parens(commaSep(args))
+    }
+
+    def cFunDef(f: String, params: List[Doc], body: Doc) = {
+      text(f) <+> parens(commaSep(params)) <+> braces(nest(emptyDoc <@> body, 1))
     }
 
 
@@ -180,17 +186,57 @@ object CLike {
 
 object Gem5Backend {
   import CLike._
-  
-  def decl1dTensor(id: String, n: Int): Doc =
-    cDeclInit("Tensor*", id, cCall("build_1Dtensor", List(quote(text(id)), value(n))))
+  import PrettyPrint.Doc._
+  import Syntax._
 
-  def initConst(tensor_name: String, num: Int): Doc =
-    cCall("const_init", List(text(tensor_name), value(num))) <> semi
+  def main(cs: CodeSection) : Doc = cs match { 
+    case CodeSection(cmd) => cFunDef("main", List(), cStmt(cmd))
+  }
+ 
+  def cType(typ: Type) : Doc = typ match {
+    case TInt => cInt
+    case TTensor(typ, size) => cType(typ) <> commaSep(size.map(e => brackets(cExpr(e))))
+  }
+
+  def cStmt(cmd : Command) : Doc = cmd match {
+    case CmdInitDecl(typ, Id(x), rhs) => {
+      cType(typ) <+> value(x) <+> equal <+> cExpr(rhs) <> semi
+    }
+
+    case CmdDecl(typ, ids) =>
+      cType(typ) <+> commaSep(ids.map({case Id(x) => value(x)}))  <> semi
+   
+    case CmdPrint(Id(s)) =>
+      value("print_1Dtensor") <> parens(value(s))
+    
+    case CmdRunKernel(Id(f), args) =>
+      value("host_" ++ f) <> parens(commaSep(args.map(e => cExpr(e))))
+    
+    case CmdSeq(c1: Command, c2: Command) => cStmt(c1) <@> cStmt(c2)
+    case CmdAssign(Id(x), rhs) => value(x) <+> cExpr(rhs)
+    case CmdProcCall(Id(f), args) => cCall(f, args.map(e => cExpr(e))) <> semi
+  }
+
+  def cBinop(op : BOp) = op match {
+    case NumOp(s) => text(s)
+  }
+
+  def cExpr(e : Expr) : Doc = e match {
+    case EVar(Id(x)) => value(x)
+    case EInt(n) => value(n)
+    case EBinop(op, e1, e2) => cExpr(e1) <+> cBinop(op) <+> cExpr(e2)
+  }
+  
+  def decl1dTensor(tensor: Doc, n: Doc): Doc =
+    cDeclInit(text("Tensor*"), tensor, cCall("build_1Dtensor", List(quote(tensor), n)))
+
+  def initConst(tensor_name: String, rhs: Doc): Doc =
+    cCall("const_init", List(text(tensor_name), rhs)) <> semi
 
   def print1dTensor(tensor_name: String): Doc =
     cCall("print_1Dtensor", List(text(tensor_name))) <> semi
 
   def runKernel(kernel_name: String, args: List[Doc]): Doc =
-    cCall("host_" + kernel_name, args) <> semi
+    cCall("host_" ++ kernel_name, args) <> semi
 
 }

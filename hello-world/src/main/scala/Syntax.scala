@@ -19,10 +19,10 @@ object Syntax {
   case class CmdInitDecl(typ: Type, id: Id, rhs: Expr) extends Command
   case class CmdDecl(typ: Type, ids: List[Id]) extends Command
   case class CmdPrint(id: Id) extends Command
-  case class CmdRunKernel(kernel: Id, args: List[Id]) extends Command
+  case class CmdRunKernel(kernel: Id, args: List[Expr]) extends Command
   case class CmdSeq(c1: Command, c2: Command) extends Command
   case class CmdAssign(id: Id, rhs: Expr) extends Command
-  case class CmdProcCall(proc: Id, args: List[Id]) extends Command
+  case class CmdProcCall(proc: Id, args: List[Expr]) extends Command
 
   trait Type
   case object TInt extends Type
