@@ -4,9 +4,6 @@ import scala.util.parsing.combinator._
 import scala.io.Source
 import Syntax._
 
-
-
-
 // largely taken and modified from Dahlia's parser:
 // https://github.com/cucapra/dahlia/blob/master/src/main/scala/Parser.scala
 private class HBIRParser extends RegexParsers with PackratParsers {
@@ -109,15 +106,32 @@ object HBIRParser {
 
 
 object Main extends App {
-  val code_lines = Source.fromFile("../example/code_section.hbir").getLines
-  val code = code_lines.mkString
-
+  // val code_lines = Source.fromFile("../example/code_section.hbir").getLines
+  // val code = code_lines.mkString
+  val csStr= """
+|code {
+|  int n = 100;
+|  int[n] A, B, C;
+|  
+|  A = 1;
+|  B = 2;
+|  C = 0;
+|
+|  print(A); 
+|  print(B); 
+|
+|  vvadd(A, B, C);
+|
+|  print(C);
+|}
+""".stripMargin
   println("parsing snippet:")
-  for (line <- code_lines) { println(line) }
-  val out = HBIRParser.parseCodeSection(code)
-  println("output:")
-  println(out)
+  // for (line <- code_lines) { println(line) }
+  val cs = HBIRParser.parseCodeSection(csStr)
   println("testing emission:")
-  println(Gem5Backend.main(out).pretty)
+  println(Gem5Backend.includes.pretty)
+  println(Gem5Backend.globalConstants.pretty)
+  println(Gem5Backend.main.pretty)
+  println(Gem5Backend.code_section(cs).pretty)
 
 }

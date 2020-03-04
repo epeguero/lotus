@@ -1,5 +1,7 @@
 /**
  * Lightweight library from the deprecated scala.text distribution.
+// largely taken and modified from Dahlia's parser:
+// https://github.com/cucapra/dahlia/blob/master/src/main/scala/Parser.scala
  */
 
 package hbir

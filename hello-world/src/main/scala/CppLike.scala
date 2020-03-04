@@ -16,7 +16,14 @@ object CLike {
 
     val defaultIndent = 2
 
+    val cStatic = text("static")
     val cInt = text("int") 
+    val cVoid = text("void")
+    val cNot = text("!")
+    val cReturn = text("return")
+
+    def cInclude(incl: String): Doc =
+      text("#include") <+> text(incl)
 
     /**
       * Helper to generate a variable declaration with an initial value.
@@ -32,14 +39,21 @@ object CLike {
     /**
       * Helper to generate a function call that might have a type parameter
       */
-    def cCall(f: String, args: List[Doc]): Doc = {
+    def cFunCall(f: String, args: List[Doc] = List()): Doc = {
       text(f) <> parens(commaSep(args))
     }
 
-    def cFunDef(f: String, params: List[Doc], body: Doc) = {
-      text(f) <+> parens(commaSep(params)) <+> braces(nest(emptyDoc <@> body, 1))
+    def cFunDef(typ: Doc, f: String, params: List[Doc], body: Doc) = {
+      typ <+> text(f) <+> parens(commaSep(params)) <+> 
+      scope(body)
     }
 
+    def cIf(cond: Doc, true_br: Doc, false_br: Option[Doc] = None) = {
+      text("if") <> parens(cond) <@>
+      scope(true_br) <@>
+      (false_br match{  case None => emptyDoc
+                        case Some(stmt) => text("else") <+> scope(stmt) })
+    }
 
     /**
       * Function used for converting types from Fuse to C++.
@@ -178,8 +192,6 @@ object CLike {
         } <+> name <> semi
     }
 
-    def emitInclude(incl: Include): Doc =
-      text("#include") <+> quote(text(incl.name))
 
   */
 }
@@ -189,8 +201,38 @@ object Gem5Backend {
   import PrettyPrint.Doc._
   import Syntax._
 
-  def main(cs: CodeSection) : Doc = cs match { 
-    case CodeSection(cmd) => cFunDef("main", List(), cStmt(cmd))
+  val main : Doc =
+    cFunDef(cVoid, "main", List(), 
+
+      cFunCall("initialize_target_section", List(value(1000), value(2), value(2))) <> semi <@>
+
+      cIf(cNot <> cFunCall("target_section_is_compatible"),
+        cFunCall("printf", List(quote(text("Aborting kernel.")))) <> semi <@>
+        cReturn <> semi
+        ) <@>
+    
+      cFunCall("initialize_groups") <> semi <@>
+      cFunCall("code_section") <> semi <@>
+
+      cReturn <> semi
+    )
+
+  val includes : Doc =
+    vsep(List(
+      "<stdlib.h>", 
+      "<stdio.h>",
+      "<assert.h>",
+      "<string.h>",
+      "gem5/header/pthread_launch.h",
+      "gem5/header/spad.h",
+      "gem5/header/bind_defs.h",
+      "lotus_runtime/header/lotus_runtime.h").map((h:String) => cInclude(h)))
+
+  val globalConstants : Doc =
+    vsep(List("SP_SIZE", "PHYS_ROWS", "PHYS_COLS").map(v => cStatic <+> cInt <+> text(v)))
+
+  def code_section(cs: CodeSection) : Doc = cs match { 
+    case CodeSection(cmd) => cFunDef(text("void"), "code_section", List(), cStmt(cmd))
   }
  
   def cType(typ: Type) : Doc = typ match {
@@ -214,7 +256,7 @@ object Gem5Backend {
     
     case CmdSeq(c1: Command, c2: Command) => cStmt(c1) <@> cStmt(c2)
     case CmdAssign(Id(x), rhs) => value(x) <+> cExpr(rhs)
-    case CmdProcCall(Id(f), args) => cCall(f, args.map(e => cExpr(e))) <> semi
+    case CmdProcCall(Id(f), args) => cFunCall(f, args.map(e => cExpr(e))) <> semi
   }
 
   def cBinop(op : BOp) = op match {
@@ -228,15 +270,15 @@ object Gem5Backend {
   }
   
   def decl1dTensor(tensor: Doc, n: Doc): Doc =
-    cDeclInit(text("Tensor*"), tensor, cCall("build_1Dtensor", List(quote(tensor), n)))
+    cDeclInit(text("Tensor*"), tensor, cFunCall("build_1Dtensor", List(quote(tensor), n)))
 
   def initConst(tensor_name: String, rhs: Doc): Doc =
-    cCall("const_init", List(text(tensor_name), rhs)) <> semi
+    cFunCall("const_init", List(text(tensor_name), rhs)) <> semi
 
   def print1dTensor(tensor_name: String): Doc =
-    cCall("print_1Dtensor", List(text(tensor_name))) <> semi
+    cFunCall("print_1Dtensor", List(text(tensor_name))) <> semi
 
   def runKernel(kernel_name: String, args: List[Doc]): Doc =
-    cCall("host_" ++ kernel_name, args) <> semi
+    cFunCall("host_" ++ kernel_name, args) <> semi
 
 }
