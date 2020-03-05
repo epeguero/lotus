@@ -80,4 +80,11 @@ Group* build_1Dgroup(
     int grid_phys_rows,
     int grid_phys_cols); 
 
+int dram_1Dstream(int* t_sp, int chunk_size, PartitionedTensor* pt, int gid, int load_ix);
+
+void dram_vvadd_store(int gid, PartitionedTensor* out, int* a_sp, int* b_sp);
+
+
+int getVecMask(int origin_x, int origin_y, int tid_x, int tid_y, int dim_x, int dim_y);
+
 #endif /* LOTUS_RUNTIME_H  */

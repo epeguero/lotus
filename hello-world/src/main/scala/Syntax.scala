@@ -12,8 +12,16 @@ object Syntax {
   case class Group(name: Id, mapping: CoordMap)
   case class CoordMap(domain: List[(Id, Expr)], range: List[Slice])
 
+  case class KernelSection(kernels: List[Kernel])
+  case class Kernel(name: Id, inputs: List[(Id, Type)], out: (Id, Type), partition: KernelPartition, body: KernelStatement)
+  case class KernelPartition(strategy: Id, tensors: List[Id], group: Id, gidName: List[Id])
 
-  case class CodeSection(cmd: Command)
+  trait KernelStatement
+  case class KStream(source: List[SpecifiedTensor], target: List[SpecifiedTensor], stmt: KernelStatement) extends KernelStatement
+  case class KVvaddStore(out: SpecifiedTensor, v1: SpecifiedTensor, v2: SpecifiedTensor) extends KernelStatement
+  case class SpecifiedTensor(name: Id, gid: List[Id], memLoc: Id)
+
+  case class CodeSection(cmd: Option[Command])
 
   trait Command
   case class CmdInitDecl(typ: Type, id: Id, rhs: Expr) extends Command
@@ -37,10 +45,13 @@ object Syntax {
     val op: String;
     override def toString = this.op;
   }
-
   case class NumOp(op: String) extends BOp
 
   case class Slice(start: Expr, end: Expr)
-
   case class Id(v: String) extends Positional
+  case class Param(name: Id, typ: Type)
+
+  implicit def toString(id: Id) = id match {
+    case Id(s) => s
+  }
 }

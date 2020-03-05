@@ -9,6 +9,7 @@ import Syntax._
 private class HBIRParser extends RegexParsers with PackratParsers {
   type P[T] = PackratParser[T]
 
+  // config section
   lazy val configSection: P[ConfigSection] = 
     "config" ~> braces(arrangement.*) ^^ {case as => ConfigSection(as)}
 
@@ -31,8 +32,32 @@ private class HBIRParser extends RegexParsers with PackratParsers {
     (expr <~ ":") ~ expr ^^ {case e1 ~ e2 => Slice(e1, e2)}
 
 
+  // kernel section
+  lazy val kernelSection : P[KernelSection] =
+    "kernel" ~> braces(kernel.+) ^^ {case ks => KernelSection(ks)}
+
+  lazy val kernel : P[Kernel] =
+    iden ~ parens(commaSep(typeAnnotatedVar)) ~ ("->" ~> typeAnnotatedVar) ~
+    ("--" ~> kernelPartition <~ "=") ~ kernelStatement ^^
+    {case name ~ ins ~ out ~ part ~ stmt => Kernel(name, ins, out, part, stmt)}
+
+  lazy val kernelPartition : P[KernelPartition] = 
+    iden ~ commaSep(iden) ~ ("across" ~> iden) ~ brackets(iden).* ^^
+      {case strat ~ tensors ~ groupName ~ gid => KernelPartition(strat, tensors, groupName, gid) }
+
+  lazy val kernelStatement : P[KernelStatement] = 
+    (commaSep(specifiedTensor) <~ "~>") ~ commaSep(specifiedTensor) ~ (":" ~> kernelStatement) ^^ 
+      {case src ~ tgt ~ stmt => KStream(src, tgt, stmt)} |
+    (specifiedTensor <~ "=") ~ specifiedTensor ~ ("+" ~> specifiedTensor) <~ ";" ^^ 
+      {case out ~ in1 ~ in2 => KVvaddStore(out, in1, in2)}
+
+  lazy val specifiedTensor : P[SpecifiedTensor] =
+    iden ~ surround("|", commaSep(iden) ~ ("@" ~> iden))  ^^ 
+      {case name ~ (gid ~ memLoc) => SpecifiedTensor(name, gid, memLoc)}
+
+  // code section
   lazy val codeSection : P[CodeSection] =
-    "code" ~> braces(command) ^^ {case c => CodeSection(c)}
+    "code" ~> braces(command.?) ^^ {case c => CodeSection(c)}
 
   lazy val command : P[Command] =
     command ~ command ^^ {case c1 ~ c2 => CmdSeq(c1, c2)} |
@@ -64,7 +89,9 @@ private class HBIRParser extends RegexParsers with PackratParsers {
   def parens[T](parser: P[T]): P[T] = "(" ~> parser <~ ")"
   def angular[T](parser: P[T]): P[T] = "<" ~> parser <~ ">"
   def commaSep[T](parser: P[T]): P[List[T]] = repsep(parser, "," )
+  def surround[T](surr: String, parser: P[T]) = surr ~> parser <~ surr
 
+  lazy val typeAnnotatedVar : P[(Id, Type)] = (iden <~ ":") ~ typ ^^ {case id ~ typ => (id, typ) }
   lazy val funCall: P[Id ~ List[Expr]] = iden ~ parens(commaSep(expr))
 
   lazy val iden: P[Id] = positioned {
@@ -100,37 +127,50 @@ object HBIRParser {
     //Errors.ParserError(s"$res")
   }
 
+  def parseKernelSection(str: String): KernelSection = parse(str, kernelSection)
   def parseCodeSection(str: String): CodeSection = parse(str, codeSection)
-  def debug = parse("print(A, B, C);", command)
 }
 
 
 object Main extends App {
   // val code_lines = Source.fromFile("../example/code_section.hbir").getLines
   // val code = code_lines.mkString
+  val ksStr = """
+      |kernel {
+      | vvadd (A: int[n], B: int[n]) -> C: int[n]
+      | -- equipartition1D A, B across oneDimGroup[i] =
+      |      A|i@dram|, B|i@dram| ~> A|i@sp|, B|i@sp|:
+      |        C|i@dram| = A|i@sp| + B|i@sp|;
+      }
+      """.stripMargin
+
   val csStr= """
-|code {
-|  int n = 100;
-|  int[n] A, B, C;
-|  
-|  A = 1;
-|  B = 2;
-|  C = 0;
-|
-|  print(A); 
-|  print(B); 
-|
-|  vvadd(A, B, C);
-|
-|  print(C);
-|}
-""".stripMargin
-  println("parsing snippet:")
-  // for (line <- code_lines) { println(line) }
+      |code {
+      |  int n = 100;
+      |  int[n] A, B, C;
+      |  
+      |  A = 1;
+      |  B = 2;
+      |  C = 0;
+      |
+      |  print(A); 
+      |  print(B); 
+      |
+      |  vvadd(A, B, C);
+      |
+      |  print(C);
+      |}
+      """.stripMargin
+
+  println("testing parsing:")
   val cs = HBIRParser.parseCodeSection(csStr)
+  val KernelSection(List(k)) = HBIRParser.parseKernelSection(ksStr)
   println("testing emission:")
   println(Gem5Backend.includes.pretty)
   println(Gem5Backend.globalConstants.pretty)
+  println(Gem5Backend.typedefArgs(k).pretty)
+  println(Gem5Backend.buildArgs(k).pretty)
+  println(Gem5Backend.kernelLauncher(k).pretty)
   println(Gem5Backend.main.pretty)
   println(Gem5Backend.code_section(cs).pretty)
 

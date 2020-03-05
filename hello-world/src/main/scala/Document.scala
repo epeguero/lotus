@@ -36,6 +36,15 @@ object PrettyPrint {
     }
     def <+>(hd: Doc): Doc = this <> DocSpace <> hd
 
+    def h_length: Int = this match {
+      case DocNil => 0
+      case DocCons(h, t) => h.h_length + t.h_length
+      case DocText(t) => t.length 
+      case DocNest(ind, d) => d.h_length + ind
+      case DocBreak => 0
+      case DocSpace => 1
+    }
+
     def pretty: String = {
       val writer = new java.io.StringWriter()
       format(writer)
@@ -82,6 +91,9 @@ object PrettyPrint {
   }
 
   object Doc {
+    implicit def stringToDoc(s: String) = text(s)
+    implicit def anyToDoc(a: Any) = value(a)
+
     /** The empty Doc */
     def emptyDoc = DocNil
     def line = DocBreak
@@ -113,13 +125,16 @@ object PrettyPrint {
       folddoc(ds, (_ <> sep <> _))
 
     def ssep(ds: Iterable[Doc], sep: Doc): Doc =
-      folddoc(ds, (_ <> sep <> _))
+      folddoc(ds, (_ <+> sep <+> _))
 
     def hsep(ds: Iterable[Doc]): Doc =
       folddoc(ds, (_ <+> _))
 
     def vsep(ds: Iterable[Doc]): Doc =
       folddoc(ds, (_ <@> _))
+
+    def vsepDelim(sep: Doc, ds: Iterable[Doc]): Doc =
+      folddoc(ds, (_ <> sep <@> _))
 
     def enclose(l: Doc, d: Doc, r: Doc) = l <> d <> r
 

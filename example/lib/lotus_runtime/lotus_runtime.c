@@ -1,7 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "header/lotus_runtime.h"
-
+#include "gem5/header/pthread_launch.h"
+#include "gem5/header/spad.h"
+#include "gem5/header/bind_defs.h"
 
 Coord* build_1Dcoord(int coord) {
   int* coord_arr = (int*) malloc(sizeof(int));
@@ -142,7 +144,21 @@ Group* build_1Dgroup(
 }
 
 
+int dram_1Dstream(int* t_sp, int chunk_size, PartitionedTensor* pt, int gid, int load_ix) {
 
+  int stream_offset = load_ix * chunk_size;
+  Range* slice = pt->partitions[gid]->slices[0];
 
+  for(int i = 0; i < chunk_size; i++) {
+    t_sp[i] = pt->t->data[slice->start + stream_offset + i];
+  }
+}
 
+void dram_vvadd_store(int gid, PartitionedTensor* out, int* a_sp, int* b_sp) {
+  Range* slice = out->partitions[gid]->slices[0];
+  int n = slice->end - slice->start;
+  for(int i = 0; i < n; i++) {
+    STORE_NOACK(a_sp[i] + b_sp[i], out->t->data + slice->start + i, 0);
+  }
+}
 

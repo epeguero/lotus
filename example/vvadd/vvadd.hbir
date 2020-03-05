@@ -18,8 +18,8 @@ data {
 kernel {
  vvadd (A: int[n], B: int[n]) -> C: int[n]
  -- equipartition1D A, B across oneDimGroup[i] =
-      A|i, dram|, B|i, dram| ~> A|i, sp|, B|i, sp|:
-        C_dram = A_sp + B_sp;
+      A|i@dram|, B|i@dram| ~> A|i@sp|, B|i@sp|:
+        C|i@dram| = A|i@sp| + B|i@sp|;
 }
 
 code {

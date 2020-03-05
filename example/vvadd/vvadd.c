@@ -7,6 +7,7 @@
 #include "gem5/header/bind_defs.h"
 #include "lotus_runtime/header/lotus_runtime.h"
 
+
 // TODO generate from target section
 static int SP_SIZE;
 static int PHYS_ROWS;
@@ -30,25 +31,6 @@ int target_section_is_compatible() {
 
   return 1;
 }
-
-int dram_1Dstream(int* t_sp, int chunk_size, PartitionedTensor* pt, int gid, int load_ix) {
-
-  int stream_offset = load_ix * chunk_size;
-  Range* slice = pt->partitions[gid]->slices[0];
-
-  for(int i = 0; i < chunk_size; i++) {
-    t_sp[i] = pt->t->data[slice->start + stream_offset + i];
-  }
-}
-
-void dram_vvadd_store(int gid, PartitionedTensor* out, int* a_sp, int* b_sp) {
-  Range* slice = out->partitions[gid]->slices[0];
-  int n = slice->end - slice->start;
-  for(int i = 0; i < n; i++) {
-    STORE_NOACK(a_sp[i] + b_sp[i], out->t->data + slice->start + i, 0);
-  }
-}
-
 
 
 // partition strategies
@@ -147,28 +129,29 @@ Vvadd_Args** build_vvadd_args(PartitionedTensor* A, PartitionedTensor* B, Partit
   return args;
 }
 
-// TODO: generate device kernel name from code block
+
+// TODO: generate device kernel name from kernel
 void *device_vvadd(void *args) {
-  // guarentee one thread goes to each core, 
-  //by preventing any threads from finishing early
-  pthread_barrier_wait(&start_barrier);
-  
-  // TODO: generate from code block
+  // TODO: generate from kernel
   Vvadd_Args *a = (Vvadd_Args*)args;
   PartitionedTensor* A = a->A;
   PartitionedTensor* B = a->B;
   PartitionedTensor* C = a->C;
   Group* group = a->oneDimGroup;
   int gid = a->gid;
+  Tile* tile = group->tiles[gid];
 
+  // guarentee one thread goes to each core, 
+  //by preventing any threads from finishing early
+  pthread_barrier_wait(&start_barrier);
+  
   // start recording all stats (all cores)
-  if (group->tiles[gid]->phys_tid_row == 0 && 
-      group->tiles[gid]->phys_tid_col== 0) { 
+  if (tile->phys_tid_row == 0 && 
+      tile->phys_tid_col== 0) { 
     stats_on(); 
   }
 
   // configure i-cache mask
-  Tile* tile = group->tiles[gid];
   int mask = getVecMask(tile->phys_tid_col,
                         tile->phys_tid_row,
                         tile->phys_tid_col,
@@ -184,12 +167,13 @@ void *device_vvadd(void *args) {
   // reset i-cache configuration mask
   VECTOR_EPOCH(0);
 
-  pthread_barrier_wait(&start_barrier);
-
-  if (group->tiles[gid]->phys_tid_row == 0 && 
-      group->tiles[gid]->phys_tid_col== 0) { 
+  if (tile->phys_tid_row == 0 && 
+      tile->phys_tid_col== 0) { 
     stats_off(); 
   }
+
+  pthread_barrier_wait(&start_barrier);
+
 
   return NULL;
 }
