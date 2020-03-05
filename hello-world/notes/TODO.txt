@@ -1,8 +1,0 @@
-I will complete the following, necessary actions to implement key language features:
-
---Implement language features for vvadd:
-	--Implement Parser over vvadd
-		--Define `arrangements` as functions over phys row/col sizes
-	--Implement Emitter over vvadd
-		--Refactor vvadd to prepare for emitting
-	
