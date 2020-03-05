@@ -1,0 +1,29 @@
+Wish List:
+
+Language Features:
+- Nested Grouping
+- Communication
+
+Tools:
+- 
+
+
+
+
+RoadMap:
+
+1) Implement vvadd
+	Required Features:
+	- One dimensional group construction
+	- One dimensional data partitioning
+	- Data Streaming from dram to scratchpad of same-size vectors
+	- Tensor addition
+
+	Limitations:
+	- code blocks:
+		- inputs must be the same size
+	- streaming:
+		- scratchpad is always divided evenly among inputs
+		- streaming cannot be nested (nor does it make sense)
+		- only support vvadd store from scratchpad to dram
+	
