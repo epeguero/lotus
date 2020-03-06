@@ -195,7 +195,13 @@ object Gem5Backend {
       )
 
   }
-  def kernelLauncher(k: Kernel) : Doc = k match {
+
+  // def groupBuilders(a : Arrangement): Doc = a match {
+  //   case Arrangement(gridName, physGridSizeBindings, Group(Id(name), CoordMap(domain, range))) =>
+  //     "// group building code goes here!!"
+  // }
+
+  def hostKernel(k: Kernel) : Doc = k match {
     case Kernel(Id(name), inputs, output, KernelPartition(partStrat, partTensors, Id(groupName), _), body) =>
       val ins: List[Doc] = inputs.map({case (Id(id),typ) => id})
       val out: Doc = output match {case (Id(id),_) => id}
@@ -231,6 +237,7 @@ object Gem5Backend {
             )
           )
         ) <@>
+
         cReturn <+> "NULL" <> semi
       )
   }
@@ -266,9 +273,9 @@ object Gem5Backend {
           cBinE(tile,"->","phys_tid_row"),
           cBinE(group,"->","num_cols_par"),
           cBinE(group,"->","num_cols_par")
-        )))) <@>
+        )))) <> semi <@>
     body <@>
-    cFunCall("VECTOR_EPOCH", List(0))
+    cFunCall("VECTOR_EPOCH", List(0)) <> semi
      
   def pthreadBarrier(body: Doc) : Doc =
     "pthread_barrier_wait(&start_barrier);" <@>

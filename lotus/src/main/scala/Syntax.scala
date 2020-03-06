@@ -7,7 +7,7 @@ object Syntax {
 
   case class Arrangement(
     gridName: Id, 
-    phys_limit_bindings: (Id, Id),
+    physLimitBindings: (Id, Id),
     groups: List[Group])
   case class Group(name: Id, mapping: CoordMap)
   case class CoordMap(domain: List[(Id, Expr)], range: List[Slice])
